@@ -15,6 +15,7 @@ const BASE_RATES: Rate[] = [
   { currency: "Euro",            code: "EUR", flag: "🇪🇺", rate: 0.000057,  deltaPct:  0.08 },
   { currency: "British Pound",   code: "GBP", flag: "🇬🇧", rate: 0.000049,  deltaPct:  0.22 },
   { currency: "Thai Baht",       code: "THB", flag: "🇹🇭", rate: 0.0023,    deltaPct:  0.05 },
+  { currency: "UAE Dirham",      code: "AED", flag: "🇦🇪", rate: 0.000228,  deltaPct:  0.17 },
 ];
 
 function jitter(rate: number): number {
@@ -113,7 +114,7 @@ export function ExchangeRateWidget() {
 
               <div className="text-right">
                 <p className="tabular-nums text-sm font-semibold text-[var(--text-primary)]">
-                  {r.code === "USD" ? "$" : r.code === "SGD" ? "S$" : r.code === "GBP" ? "£" : r.code === "THB" ? "฿" : "€"}
+                  {r.code === "USD" ? "$" : r.code === "SGD" ? "S$" : r.code === "GBP" ? "£" : r.code === "THB" ? "฿" : r.code === "AED" ? "د.إ" : "€"}
                   {converted.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
