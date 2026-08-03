@@ -10,12 +10,13 @@ type Rate = {
 };
 
 const BASE_RATES: Rate[] = [
-  { currency: "US Dollar",       code: "USD", flag: "🇺🇸", rate: 0.000062,  deltaPct:  0.31 },
-  { currency: "Singapore Dollar",code: "SGD", flag: "🇸🇬", rate: 0.000083,  deltaPct: -0.14 },
-  { currency: "Euro",            code: "EUR", flag: "🇪🇺", rate: 0.000057,  deltaPct:  0.08 },
-  { currency: "British Pound",   code: "GBP", flag: "🇬🇧", rate: 0.000049,  deltaPct:  0.22 },
-  { currency: "Thai Baht",       code: "THB", flag: "🇹🇭", rate: 0.0023,    deltaPct:  0.05 },
-  { currency: "UAE Dirham",      code: "AED", flag: "🇦🇪", rate: 0.000228,  deltaPct:  0.17 },
+  { currency: "US Dollar",        code: "USD", flag: "🇺🇸", rate: 0.000062,  deltaPct:  0.31 },
+  { currency: "Singapore Dollar", code: "SGD", flag: "🇸🇬", rate: 0.000083,  deltaPct: -0.14 },
+  { currency: "Euro",             code: "EUR", flag: "🇪🇺", rate: 0.000057,  deltaPct:  0.08 },
+  { currency: "British Pound",    code: "GBP", flag: "🇬🇧", rate: 0.000049,  deltaPct:  0.22 },
+  { currency: "Thai Baht",        code: "THB", flag: "🇹🇭", rate: 0.0023,    deltaPct:  0.05 },
+  { currency: "UAE Dirham",       code: "AED", flag: "🇦🇪", rate: 0.000228,  deltaPct:  0.17 },
+  { currency: "Malaysian Ringgit",code: "MYR", flag: "🇲🇾", rate: 0.000292,  deltaPct:  0.12 },
 ];
 
 function jitter(rate: number): number {
@@ -27,6 +28,19 @@ function formatRate(rate: number): string {
   if (rate < 0.001) return rate.toFixed(6);
   if (rate < 1)    return rate.toFixed(4);
   return rate.toFixed(2);
+}
+
+function getCurrencySymbol(code: string): string {
+  switch (code) {
+    case "USD": return "$";
+    case "SGD": return "S$";
+    case "GBP": return "£";
+    case "THB": return "฿";
+    case "AED": return "د.إ";
+    case "MYR": return "RM";
+    case "EUR": return "€";
+    default:    return "";
+  }
 }
 
 export function ExchangeRateWidget() {
@@ -114,7 +128,7 @@ export function ExchangeRateWidget() {
 
               <div className="text-right">
                 <p className="tabular-nums text-sm font-semibold text-[var(--text-primary)]">
-                  {r.code === "USD" ? "$" : r.code === "SGD" ? "S$" : r.code === "GBP" ? "£" : r.code === "THB" ? "฿" : r.code === "AED" ? "د.إ" : "€"}
+                  {getCurrencySymbol(r.code)}
                   {converted.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
