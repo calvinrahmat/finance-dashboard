@@ -5,6 +5,7 @@ stages:
   - build
   - docker
   - deploy
+  - security
 
 cache:
   key:
@@ -81,3 +82,25 @@ deploy:
   environment:
     name: production
     url: http://$DEPLOY_HOST
+
+# ── Security Scanning ────────────────────────────────────────────────────────
+
+include:
+  # Static Application Security Testing (SAST)
+  - template: Security/SAST.gitlab-ci.yml
+  # Secret Detection
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  # Dependency Scanning (npm packages)
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  # Container Scanning (Docker image)
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+# Override Container Scanning to run after the Docker image is built
+container_scanning:
+  stage: security
+  needs:
+    - docker-build
+  variables:
+    CS_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
