@@ -3,7 +3,6 @@ image: node:22-alpine
 stages:
   - test
   - build
-  - docker
   - deploy
   - security
 
@@ -36,53 +35,6 @@ build:
       - dist
     expire_in: 1 week
 
-docker-build:
-  stage: docker
-  image:
-    name: gcr.io/kaniko-project/executor:v1.23.2-debug
-    entrypoint: [""]
-  before_script: []
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-  script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
-    - >-
-      /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
-      --destination "${CI_REGISTRY_IMAGE}:latest"
-
-deploy:
-  stage: deploy
-  image: alpine:3.20
-  before_script:
-    - apk add --no-cache openssh-client
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - cp "$SSH_PRIVATE_KEY" ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-    - chmod 644 ~/.ssh/known_hosts
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-  script:
-    - |
-      ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes $DEPLOY_USER@$DEPLOY_HOST "
-        docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY} &&
-        docker pull ${CI_REGISTRY_IMAGE}:latest &&
-        docker stop finance-dashboard || true &&
-        docker rm finance-dashboard || true &&
-        docker run -d \
-          --name finance-dashboard \
-          --restart unless-stopped \
-          -p 80:80 \
-          ${CI_REGISTRY_IMAGE}:latest
-      "
-  environment:
-    name: production
-    url: http://$DEPLOY_HOST
-
 pages:
   stage: deploy
   script:
@@ -107,8 +59,6 @@ include:
   - template: Security/Secret-Detection.gitlab-ci.yml
   # Dependency Scanning (npm packages)
   - template: Security/Dependency-Scanning.gitlab-ci.yml
-  # Container Scanning (Docker image)
-  - template: Security/Container-Scanning.gitlab-ci.yml
 
 # ── Security job overrides ───────────────────────────────────────────────────
 # Security scanner jobs use their own base images and must NOT inherit the
@@ -128,14 +78,3 @@ secret_detection:
 # Dependency Scanning
 gemnasium-dependency_scanning:
   before_script: []
-
-# Container Scanning — runs after docker-build on the default branch only
-container_scanning:
-  stage: security
-  before_script: []
-  needs:
-    - docker-build
-  variables:
-    CS_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
