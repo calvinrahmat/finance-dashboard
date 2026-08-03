@@ -83,6 +83,17 @@ deploy:
     name: production
     url: http://$DEPLOY_HOST
 
+pages:
+  stage: deploy
+  script:
+    - npm run build
+    - cp -r dist/* public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 # ── Security Scanning ────────────────────────────────────────────────────────
 
 include:
