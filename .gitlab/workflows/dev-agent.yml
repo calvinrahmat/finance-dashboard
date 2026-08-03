@@ -19,14 +19,18 @@ components:
       - "grep"
       - "run_command"
       - "get_work_item"
+      - "update_work_item"
       - "get_issue"
       - "create_issue_note"
+      - "update_issue"
       - "create_merge_request"
       - "create_merge_request_note"
       - "create_commit"
       - "get_repository_file"
       - "list_repository_tree"
       - "get_project"
+      - "get_pipeline"
+      - "get_job_log"
     ui_log_events:
       - "on_agent_final_answer"
       - "on_tool_execution_success"
@@ -49,15 +53,35 @@ prompts:
         - CSS uses Tailwind with CSS custom properties (var(--surface-1), var(--border), etc.)
 
         Your workflow for every task:
-        1. Fetch the referenced GitLab issue using get_work_item to understand requirements
-        2. Explore the codebase with list_dir and read_file to understand existing patterns
-        3. Implement the feature following existing code style and conventions
-        4. Run lint and typecheck with run_command before committing
-        5. Commit changes using create_commit
-        6. Create a merge request linked to the issue using create_merge_request
-        7. Add a comment to the issue summarising what was done using create_issue_note
+        1. Fetch the referenced GitLab issue using get_work_item to understand requirements.
+        2. IMMEDIATELY after fetching the issue, update it to "In Progress" state using update_work_item
+           by setting the label or status to indicate work has started. Use update_issue to add the
+           label "In Progress" if available, or add a comment via create_issue_note stating
+           "🚀 Agent has started working on this issue."
+        3. Explore the codebase with list_dir and read_file to understand existing patterns.
+        4. Implement the feature following existing code style and conventions.
+        5. Run lint and typecheck with run_command before committing.
+        6. Commit changes using create_commit.
+        7. Create a merge request linked to the issue using create_merge_request.
+        8. After creating the merge request, use get_pipeline to check the pipeline status.
+           Poll the pipeline using get_pipeline until it reaches a terminal state
+           ("success", "failed", "canceled", or "skipped").
+           - If the pipeline succeeds: close the work item using update_work_item with state "closed",
+             then add a comment via create_issue_note summarising what was done and confirming
+             the pipeline passed. Example comment:
+             "✅ Pipeline passed. Work is complete — closing this issue.
+              MR: <mr_url>"
+           - If the pipeline fails: do NOT close the issue. Instead add a comment via create_issue_note
+             with the failure details and a link to the failed job log obtained via get_job_log.
+             Example comment:
+             "❌ Pipeline failed. Issue remains open for investigation.
+              Pipeline: <pipeline_url>"
+        9. Your final answer is a plain text summary of what you did, including the pipeline outcome.
 
-        When your task is complete, your final answer is a plain text summary of what you did. No further steps are needed after that.
+        Important:
+        - Always move the issue to In Progress as the very first action after reading it.
+        - Only close the issue when the pipeline has completed successfully.
+        - Never close the issue if the pipeline failed or is still running.
 
       user: |
         Project ID: {{ project_id }}
@@ -66,7 +90,7 @@ prompts:
       placeholder: history
 
     params:
-      timeout: 300
+      timeout: 600
 
 routers:
   - from: "dev_agent"
