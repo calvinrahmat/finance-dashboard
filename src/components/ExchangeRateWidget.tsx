@@ -38,7 +38,8 @@ function getCurrencySymbol(code: string): string {
     case "THB": return "฿";
     case "AED": return "د.إ";
     case "MYR": return "RM";
-    default:    return "€";
+    case "EUR": return "€";
+    default:    return "";
   }
 }
 
