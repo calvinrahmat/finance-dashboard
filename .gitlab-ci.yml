@@ -95,9 +95,29 @@ include:
   # Container Scanning (Docker image)
   - template: Security/Container-Scanning.gitlab-ci.yml
 
-# Override Container Scanning to run after the Docker image is built
+# ── Security job overrides ───────────────────────────────────────────────────
+# Security scanner jobs use their own base images and must NOT inherit the
+# global `before_script` that runs `npm ci`.
+
+# SAST runners
+nodejs-scan-sast:
+  before_script: []
+
+semgrep-sast:
+  before_script: []
+
+# Secret Detection
+secret_detection:
+  before_script: []
+
+# Dependency Scanning
+gemnasium-dependency_scanning:
+  before_script: []
+
+# Container Scanning — runs after docker-build on the default branch only
 container_scanning:
   stage: security
+  before_script: []
   needs:
     - docker-build
   variables:
