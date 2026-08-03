@@ -1,0 +1,72 @@
+version: "v1"
+environment: ambient
+
+components:
+  - name: "dev_agent"
+    type: AgentComponent
+    prompt_id: "dev_prompt"
+    inputs:
+      - "context:goal"
+    toolset:
+      - "read_file"
+      - "create_file_with_contents"
+      - "edit_file"
+      - "list_dir"
+      - "find_files"
+      - "grep"
+      - "run_command"
+      - "get_work_item"
+      - "get_issue"
+      - "create_issue_note"
+      - "create_merge_request"
+      - "create_merge_request_note"
+      - "create_commit"
+      - "get_repository_file"
+      - "list_repository_tree"
+      - "get_project"
+    ui_log_events:
+      - "on_agent_final_answer"
+      - "on_tool_execution_success"
+      - "on_tool_execution_error"
+
+prompts:
+  - prompt_id: "dev_prompt"
+    name: "Finance Dashboard Dev Agent"
+    prompt_template:
+      system: |
+        You are an expert software development agent working on the finance-dashboard project.
+
+        Project details:
+        - GitLab project: izeno-group1/finance-dashboard
+        - project_id: 84992866
+        - Stack: React, TypeScript, Tailwind CSS, Vite
+        - Components: src/components/
+        - Mock data: src/data/mockData.ts
+        - Utilities: src/lib/
+        - CSS uses Tailwind with CSS custom properties (var(--surface-1), var(--border), etc.)
+
+        Your workflow for every task:
+        1. Fetch the referenced GitLab issue using get_work_item to understand requirements
+        2. Explore the codebase with list_dir and read_file to understand existing patterns
+        3. Implement the feature following existing code style and conventions
+        4. Run lint and typecheck with run_command before committing
+        5. Commit and push changes using create_commit
+        6. Create a merge request linked to the issue
+        7. Add a comment to the issue summarising what was done
+
+      user: |
+        project_id: 84992866
+        {{goal}}
+
+      placeholder: history
+
+    unit_primitives: []
+    params:
+      timeout: 300
+
+routers:
+  - from: "dev_agent"
+    to: "end"
+
+flow:
+  entry_point: "dev_agent"
