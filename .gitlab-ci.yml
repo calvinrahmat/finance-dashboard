@@ -55,19 +55,19 @@ docker-build:
 
 deploy:
   stage: deploy
-  image: alpine:latest
+  image: alpine:3.20
   before_script:
     - apk add --no-cache openssh-client
-    - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
     - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
     - |
-      ssh $DEPLOY_USER@$DEPLOY_HOST "
+      ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes $DEPLOY_USER@$DEPLOY_HOST "
         docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY} &&
         docker pull ${CI_REGISTRY_IMAGE}:latest &&
         docker stop finance-dashboard || true &&
