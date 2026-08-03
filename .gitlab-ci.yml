@@ -87,11 +87,14 @@ pages:
   stage: deploy
   script:
     - npm run build
-    - mv dist pages_output
+    - rm -rf _site
+    - mv dist _site
+    - cp -r public/* _site/
+    - rm -rf public
+    - mv _site public
   artifacts:
     paths:
-      - pages_output
-  publish: pages_output
+      - public
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
