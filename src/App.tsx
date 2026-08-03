@@ -5,6 +5,7 @@ import { CashFlowChart } from "./components/CashFlowChart";
 import { CategoryBreakdown } from "./components/CategoryBreakdown";
 import { BudgetMeters } from "./components/BudgetMeters";
 import { TransactionsTable } from "./components/TransactionsTable";
+import { ExchangeRateWidget } from "./components/ExchangeRateWidget";
 
 function App() {
   return (
@@ -26,7 +27,10 @@ function App() {
             <div className="xl:col-span-2">
               <TransactionsTable />
             </div>
-            <BudgetMeters />
+            <div className="flex flex-col gap-4">
+              <BudgetMeters />
+              <ExchangeRateWidget />
+            </div>
           </div>
         </main>
       </div>
