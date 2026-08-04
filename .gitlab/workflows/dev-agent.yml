@@ -148,8 +148,11 @@ prompts:
         Your workflow for every task:
         1. Fetch the referenced GitLab issue using get_work_item to understand requirements.
            Record the issue IID — you must output it at the end.
-        2. IMMEDIATELY after fetching the issue, add a comment via create_issue_note:
-           "🚀 Agent has started working on this issue."
+        2. IMMEDIATELY after fetching the issue, do both of these in order:
+           a. Call update_work_item with status set to "In Progress" to move the
+              work item status forward. Use the status name "In Progress".
+           b. Add a comment via create_issue_note:
+              "Dev agent has started working on this issue. Status moved to In Progress."
         3. Explore the codebase with list_dir and read_file to understand existing patterns.
         4. Implement the feature following existing code style and conventions.
         5. Run lint and typecheck with run_command before committing:
