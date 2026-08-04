@@ -1,18 +1,19 @@
 version: "v1"
 environment: ambient
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Finance Dashboard — Multi-Agent Flow
+# Finance Dashboard - Multi-Agent Flow
 #
 # Agents (run sequentially):
-#   1. dev_agent      — reads the issue, implements the feature, creates MR
-#   2. security_agent — scans the MR for SAST / secret / dependency findings
-#   3. readiness_agent — checks MR approval & pipeline health, closes the issue
-# ─────────────────────────────────────────────────────────────────────────────
+#   1. dev_agent       - reads the issue, moves it to In Progress, implements the feature, creates MR
+#   2. security_agent  - scans the MR diff and CI security job logs
+#   3. readiness_agent - checks MR readiness and closes the issue if all pass
+#
+# State is shared between agents via plain-text handoff comments posted on the issue.
+# Each agent reads the issue notes to find the handoff comment left by the previous agent.
 
 components:
 
-  # ── 1. Development Agent ───────────────────────────────────────────────────
+  # 1. Development Agent
   - name: "dev_agent"
     type: AgentComponent
     prompt_id: "dev_prompt"
@@ -40,34 +41,22 @@ components:
       - "get_project"
       - "get_pipeline"
       - "get_job_log"
-    outputs:
-      - name: "mr_url"
-        description: "URL of the merge request created by the dev agent"
-      - name: "mr_iid"
-        description: "IID of the merge request created by the dev agent"
-      - name: "issue_iid"
-        description: "IID of the issue being worked on"
-      - name: "pipeline_status"
-        description: "Terminal status of the CI pipeline: success | failed | canceled | skipped"
     ui_log_events:
       - "on_agent_final_answer"
       - "on_tool_execution_success"
       - "on_tool_execution_failed"
 
-  # ── 2. Security Agent ──────────────────────────────────────────────────────
+  # 2. Security Agent
   - name: "security_agent"
     type: AgentComponent
     prompt_id: "security_prompt"
     inputs:
+      - from: "context:goal"
+        as: "goal"
       - from: "context:project_id"
         as: "project_id"
-      - from: "dev_agent:mr_iid"
-        as: "mr_iid"
-      - from: "dev_agent:mr_url"
-        as: "mr_url"
-      - from: "dev_agent:issue_iid"
-        as: "issue_iid"
     toolset:
+      - "get_work_item"
       - "get_merge_request"
       - "list_merge_request_diffs"
       - "get_repository_file"
@@ -77,44 +66,27 @@ components:
       - "get_project"
       - "create_merge_request_note"
       - "create_issue_note"
-      - "get_work_item"
-      - "update_work_item"
-    outputs:
-      - name: "security_passed"
-        description: "true if no critical/high vulnerabilities were found, false otherwise"
-      - name: "security_summary"
-        description: "Plain-text summary of security findings"
     ui_log_events:
       - "on_agent_final_answer"
       - "on_tool_execution_success"
       - "on_tool_execution_failed"
 
-  # ── 3. Readiness Agent ─────────────────────────────────────────────────────
+  # 3. Readiness Agent
   - name: "readiness_agent"
     type: AgentComponent
     prompt_id: "readiness_prompt"
     inputs:
+      - from: "context:goal"
+        as: "goal"
       - from: "context:project_id"
         as: "project_id"
-      - from: "dev_agent:mr_iid"
-        as: "mr_iid"
-      - from: "dev_agent:mr_url"
-        as: "mr_url"
-      - from: "dev_agent:issue_iid"
-        as: "issue_iid"
-      - from: "dev_agent:pipeline_status"
-        as: "pipeline_status"
-      - from: "security_agent:security_passed"
-        as: "security_passed"
-      - from: "security_agent:security_summary"
-        as: "security_summary"
     toolset:
+      - "get_work_item"
+      - "update_work_item"
       - "get_merge_request"
       - "get_pipeline"
       - "get_job_log"
       - "get_project"
-      - "get_work_item"
-      - "update_work_item"
       - "create_issue_note"
       - "create_merge_request_note"
     ui_log_events:
@@ -122,13 +94,9 @@ components:
       - "on_tool_execution_success"
       - "on_tool_execution_failed"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Prompts
-# ─────────────────────────────────────────────────────────────────────────────
-
 prompts:
 
-  # ── Dev Agent Prompt ───────────────────────────────────────────────────────
+  # Dev Agent Prompt
   - prompt_id: "dev_prompt"
     name: "Finance Dashboard Dev Agent"
     unit_primitives: []
@@ -143,15 +111,13 @@ prompts:
         - Mock data: src/data/mockData.ts
         - Utilities: src/lib/
         - CSS uses Tailwind with CSS custom properties (var(--surface-1), var(--border), etc.)
-        - CI stages: test (lint, typecheck) → build → deploy → security
+        - CI stages: test (lint, typecheck) then build then deploy then security
 
         Your workflow for every task:
         1. Fetch the referenced GitLab issue using get_work_item to understand requirements.
-           Record the issue IID — you must output it at the end.
-        2. IMMEDIATELY after fetching the issue, do both of these in order:
-           a. Call update_work_item with status set to "In Progress" to move the
-              work item status forward. Use the status name "In Progress".
-           b. Add a comment via create_issue_note:
+        2. IMMEDIATELY do both of these in order:
+           a. Call update_work_item to set the status to "In Progress".
+           b. Add a comment via create_issue_note saying:
               "Dev agent has started working on this issue. Status moved to In Progress."
         3. Explore the codebase with list_dir and read_file to understand existing patterns.
         4. Implement the feature following existing code style and conventions.
@@ -161,24 +127,21 @@ prompts:
            Fix any errors before proceeding.
         6. Commit changes using create_commit on a new branch.
         7. Create a merge request linked to the issue using create_merge_request.
-           Record the MR URL and MR IID — you must output them at the end.
         8. After creating the MR, use get_pipeline to find the triggered pipeline.
            Poll get_pipeline every 30 seconds until it reaches a terminal state:
-           "success", "failed", "canceled", or "skipped".
-           Record the terminal pipeline_status — you must output it at the end.
-           - If the pipeline fails: add a comment via create_issue_note with failure details
-             and a link to the failed job log from get_job_log. Example:
-             "❌ Pipeline failed. Handing off to security agent for review.\nPipeline: <pipeline_url>"
-        9. Output the following values so the next agents can use them:
-           - mr_url: the full URL of the merge request
-           - mr_iid: the integer IID of the merge request
-           - issue_iid: the integer IID of the issue
-           - pipeline_status: the terminal pipeline status string
+           success, failed, canceled, or skipped.
+        9. Post a handoff comment on the issue via create_issue_note as your very last action.
+           The comment must start with the exact line "HANDOFF FROM DEV AGENT" and include:
+           - MR URL: the full merge request URL
+           - MR IID: the integer MR IID
+           - Issue IID: the integer issue IID
+           - Pipeline status: success or failed or canceled or skipped
+           - Pipeline URL: the full pipeline URL
 
         Important:
-        - Always comment on the issue as the very first action after reading it.
-        - Do NOT close the issue — the readiness agent will do that.
-        - Always output mr_url, mr_iid, issue_iid, and pipeline_status in your final answer.
+        - Do NOT close the issue. The readiness agent will do that.
+        - Always post the handoff comment as your very last action.
+        - Post the handoff comment even if the pipeline failed.
 
       user: |
         Project ID: {{ project_id }}
@@ -189,7 +152,7 @@ prompts:
     params:
       timeout: 1200
 
-  # ── Security Agent Prompt ──────────────────────────────────────────────────
+  # Security Agent Prompt
   - prompt_id: "security_prompt"
     name: "Finance Dashboard Security Agent"
     unit_primitives: []
@@ -202,108 +165,89 @@ prompts:
         - SAST (nodejs-scan-sast, semgrep-sast)
         - Secret Detection (secret_detection)
         - Dependency Scanning (gemnasium-dependency_scanning)
-
-        These jobs run in the "security" stage of the pipeline.
+        These jobs run in the security stage of the pipeline.
 
         Your workflow:
-        1. Use get_merge_request to fetch the MR details.
-        2. Use list_merge_request_diffs to review all changed files.
-        3. Use get_pipeline to find the latest pipeline on the MR branch.
-           Look specifically for the security-stage jobs:
-           nodejs-scan-sast, semgrep-sast, secret_detection, gemnasium-dependency_scanning.
-        4. For each security job, use get_job_log to read the scanner output.
+        1. Use get_work_item to fetch the issue identified in the goal.
+           Read through the issue comments and find the one that starts with
+           "HANDOFF FROM DEV AGENT". Extract from it:
+           MR URL, MR IID, Issue IID, Pipeline status, Pipeline URL.
+        2. Use get_merge_request with the extracted MR IID to fetch MR details.
+        3. Use list_merge_request_diffs to review all changed files.
+        4. Use get_pipeline to find the latest pipeline on the MR branch.
+           Look for security-stage jobs: nodejs-scan-sast, semgrep-sast,
+           secret_detection, gemnasium-dependency_scanning.
+           Use get_job_log to read each scanner output.
         5. Analyse the diff and scanner output for:
-           - Critical or high severity vulnerabilities (XSS, injection, hardcoded secrets, etc.)
+           - Critical or high severity vulnerabilities such as XSS, injection, hardcoded secrets
            - Exposed API keys, tokens, or credentials
            - Vulnerable dependency versions flagged by dependency scanning
-           - Insecure patterns in React/TypeScript (dangerouslySetInnerHTML, eval, etc.)
-        6. Post a structured security review comment on the MR via create_merge_request_note.
-           Format:
-           "## 🔒 Security Review\n
-            **Scanner results:** <summary of SAST / secret / dependency scan outcomes>\n
-
-            **Manual findings:**\n
-            - <finding 1 with severity>\n
-            - <finding 2 with severity>\n
-            (or \"None found\" if clean)\n
-
-            **Verdict:** ✅ PASSED / ❌ FAILED\n
-            **Reason:** <one sentence>"
-        7. Also post a brief comment on the issue via create_issue_note:
-           - If passed: "🔒 Security review passed. Handing off to readiness agent."
-           - If failed: "🔒 Security review FAILED. Critical issues must be resolved before merge.\n<summary>"
-        8. Output:
-           - security_passed: true if no critical/high issues found, false otherwise
-           - security_summary: one-paragraph plain-text summary of findings
+           - Insecure React or TypeScript patterns such as dangerouslySetInnerHTML or eval
+        6. Post a structured security review on the MR via create_merge_request_note.
+           Include scanner results, manual findings with severity, and a final verdict of
+           PASSED or FAILED with a one-sentence reason.
+        7. Post a handoff comment on the issue via create_issue_note as your last action.
+           The comment must start with the exact line "HANDOFF FROM SECURITY AGENT" and include:
+           - Security passed: true or false
+           - Verdict: PASSED or FAILED
+           - MR IID: the integer MR IID
+           - MR URL: the full merge request URL
+           - Issue IID: the integer issue IID
+           - Pipeline status: the value from the dev agent handoff
+           - Summary: a one-paragraph plain-text summary of findings
 
         Important:
-        - Treat any hardcoded secret or critical SAST finding as an automatic FAIL.
-        - High severity findings should also fail unless they are false positives you can justify.
-        - Medium and low findings should be noted but do not block the flow.
+        - Any hardcoded secret or critical SAST finding is an automatic FAIL.
+        - High severity findings also fail unless clearly a false positive.
+        - Medium and low findings are noted but do not block the flow.
+        - Always post the handoff comment even if the security scan failed.
 
       user: |
         Project ID: {{ project_id }}
-        MR IID: {{ mr_iid }}
-        MR URL: {{ mr_url }}
-        Issue IID: {{ issue_iid }}
+        Goal: {{ goal }}
 
       placeholder: history
 
     params:
       timeout: 600
 
-  # ── Readiness Agent Prompt ─────────────────────────────────────────────────
+  # Readiness Agent Prompt
   - prompt_id: "readiness_prompt"
     name: "Finance Dashboard Readiness Agent"
     unit_primitives: []
     prompt_template:
       system: |
         You are a release readiness agent for the finance-dashboard project.
-        Your job is to make the final go/no-go decision on whether a work item
+        Your job is to make the final go or no-go decision on whether a work item
         can be marked as Done.
 
-        You receive the following context from previous agents:
-        - pipeline_status: terminal CI pipeline status from the dev agent
-        - security_passed: boolean from the security agent
-        - security_summary: security findings summary
-        - mr_iid and mr_url: the merge request to evaluate
-        - issue_iid: the issue to close or keep open
-
-        Readiness checklist — ALL of the following must be true to pass:
-        1. pipeline_status == "success"
-        2. security_passed == true
-        3. MR has no unresolved threads (check via get_merge_request — look at blocking_discussions_resolved)
-        4. MR is not in draft state (check draft field in get_merge_request)
-        5. MR has at least one approval OR the project does not require approvals
-           (check approvals_before_merge and approved fields via get_merge_request)
-
         Your workflow:
-        1. Use get_merge_request to fetch the current MR state.
-        2. Evaluate each checklist item above.
-        3. If ALL checks pass:
-           a. Close the work item using update_work_item with state "closed".
-           b. Post a comment on the issue via create_issue_note:
-              "✅ All readiness checks passed. Closing this issue.\n
-               - CI Pipeline: ✅ success\n
-               - Security scan: ✅ passed\n
-               - MR discussions: ✅ resolved\n
-               - MR draft: ✅ not draft\n
-               - Approvals: ✅ approved\n
-               MR: <mr_url>"
-           c. Post a comment on the MR via create_merge_request_note:
-              "🚀 Readiness check passed. This MR is ready to merge."
-        4. If ANY check fails:
+        1. Use get_work_item to fetch the issue identified in the goal.
+           Read through the issue comments and find:
+           - The comment starting with "HANDOFF FROM DEV AGENT".
+             Extract: MR IID, MR URL, Issue IID, Pipeline status.
+           - The comment starting with "HANDOFF FROM SECURITY AGENT".
+             Extract: Security passed (true or false), Security summary.
+        2. Use get_merge_request with the MR IID to fetch the current MR state.
+        3. Evaluate the readiness checklist. ALL of the following must be true to pass:
+           a. Pipeline status is success
+           b. Security passed is true
+           c. MR blocking_discussions_resolved is true
+           d. MR draft is false
+           e. MR has at least one approval or approvals_before_merge is 0
+        4. If ALL checks pass:
+           a. Close the work item using update_work_item with state closed.
+           b. Post a comment on the issue via create_issue_note listing each check
+              with a pass mark and confirming the issue is closed. Include the MR URL.
+           c. Post a comment on the MR via create_merge_request_note saying
+              the readiness check passed and the MR is ready to merge.
+        5. If ANY check fails:
            a. Do NOT close the issue.
-           b. Post a comment on the issue via create_issue_note listing which checks failed:
-              "⚠️ Readiness check FAILED. Issue remains open.\n
-               - CI Pipeline: <✅/❌> <status>\n
-               - Security scan: <✅/❌> <summary>\n
-               - MR discussions: <✅/❌>\n
-               - MR draft: <✅/❌>\n
-               - Approvals: <✅/❌>\n
-               Please resolve the above and re-trigger the flow."
+           b. Post a comment on the issue via create_issue_note listing each check
+              with a pass or fail mark and asking the team to resolve the failures
+              and re-trigger the flow.
            c. Post the same summary on the MR via create_merge_request_note.
-        5. Your final answer is a plain-text readiness report.
+        6. Your final answer is a plain-text readiness report.
 
         Important:
         - Never close the issue if any checklist item fails.
@@ -311,21 +255,14 @@ prompts:
 
       user: |
         Project ID: {{ project_id }}
-        MR IID: {{ mr_iid }}
-        MR URL: {{ mr_url }}
-        Issue IID: {{ issue_iid }}
-        Pipeline status: {{ pipeline_status }}
-        Security passed: {{ security_passed }}
-        Security summary: {{ security_summary }}
+        Goal: {{ goal }}
 
       placeholder: history
 
     params:
       timeout: 300
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Routing — sequential: dev → security → readiness → end
-# ─────────────────────────────────────────────────────────────────────────────
+# Routing - sequential: dev_agent then security_agent then readiness_agent then end
 
 routers:
   - from: "dev_agent"
