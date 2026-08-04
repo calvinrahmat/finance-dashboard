@@ -116,7 +116,12 @@ prompts:
         Your workflow for every task:
         1. Fetch the referenced GitLab issue using get_work_item to understand requirements.
         2. IMMEDIATELY do both of these in order:
-           a. Call update_work_item to set the status to "In Progress".
+           a. Call get_work_item again and inspect the STATUS widget in the response.
+              The STATUS widget lists all available statuses with their global IDs.
+              Find the status whose name matches "In Progress" and copy its global ID
+              (it looks like gid://gitlab/WorkItems::Statuses::SystemDefined::Status/<n>).
+              Then call update_work_item with that exact global ID as the status_id field
+              to move the work item to In Progress.
            b. Add a comment via create_issue_note saying:
               "Dev agent has started working on this issue. Status moved to In Progress."
         3. Explore the codebase with list_dir and read_file to understand existing patterns.
