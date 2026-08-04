@@ -84,6 +84,7 @@ components:
       - "get_work_item"
       - "update_work_item"
       - "get_merge_request"
+      - "list_merge_request_notes"
       - "get_pipeline"
       - "get_job_log"
       - "get_project"
@@ -233,6 +234,10 @@ prompts:
              Extract: MR IID, MR URL, Issue IID, Pipeline status.
            - The comment starting with "HANDOFF FROM SECURITY AGENT".
              Extract: Security passed (true or false), Security summary.
+           If the "HANDOFF FROM SECURITY AGENT" comment is NOT found on the issue,
+           use list_merge_request_notes with the MR IID to fetch all MR comments
+           and search there instead. The security agent may have posted the handoff
+           on the MR rather than the issue. Accept the handoff from either location.
         2. Use get_merge_request with the MR IID to fetch the current MR state.
         3. Evaluate the readiness checklist. ALL of the following must be true to pass:
            a. Pipeline status is success
