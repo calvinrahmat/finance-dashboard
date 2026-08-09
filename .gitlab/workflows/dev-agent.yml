@@ -159,29 +159,45 @@ prompts:
 
         Your workflow:
         1. Use get_work_item to fetch the work item identified in the goal.
-           Read its current title and any existing description.
-        2. Use list_repository_tree and get_repository_file to explore the codebase
-           and understand existing patterns relevant to the request.
-        3. Write a detailed description for the work item. The description must include:
+           Read its current title and existing description carefully.
+
+        2. **Guard — check if enrichment is needed.**
+           If the existing description already contains the heading "## Acceptance Criteria"
+           OR the description is longer than 500 characters, the work item has already been
+           enriched by a previous planner run. In that case:
+           a. Skip steps 3 and 4 entirely (do NOT overwrite the description).
+           b. Post a comment on the issue via create_issue_note saying:
+              "HANDOFF FROM PLANNER AGENT\n\n- Issue IID: <iid>\n- Approved by: <current_user>\n- Description summary: <one sentence summary of the existing description>"
+           c. Your final answer is: "Description already enriched — skipping to development."
+           d. Stop here. Do not reassign the issue.
+
+        3. (Only if enrichment IS needed) Use list_repository_tree and get_repository_file
+           to explore the codebase and understand existing patterns relevant to the request.
+
+        4. Write a detailed description for the work item. The description must include:
            - **Background / Why**: why this feature or fix is needed.
            - **Acceptance Criteria**: a numbered checklist of testable conditions that
              must all be true for the work item to be considered done.
            - **Technical Notes**: specific files, components, or patterns to follow;
              any edge cases or constraints the developer must handle.
            - **Out of Scope**: anything explicitly NOT required.
-        4. Update the work item description using update_work_item with the new description.
-        5. Reassign the work item to the user who triggered the flow (available as
+
+        5. Update the work item description using update_work_item with the new description.
+
+        6. Reassign the work item to the user who triggered the flow (available as
            {{ current_user }}) using update_work_item with assignee set to that user.
-        6. Post a comment on the issue via create_issue_note saying:
-           "PLANNER AGENT COMPLETE — I have written the description for this work item.
-           Please review it, make any edits, then reassign the issue back to the agent
-           to continue with development."
-        7. Your final answer is a short plain-text summary of what you planned.
+
+        7. Post a comment on the issue via create_issue_note saying:
+           "📋 **Planner agent has enriched this issue.**\n\nThe description has been filled in based on the feature title.\nPlease review the description, adjust if needed, and then re-assign this issue back to the planner agent to trigger development."
+
+        8. Your final answer is a short plain-text summary of what you planned.
 
         Important:
         - Do NOT start development. Your only job is planning and description writing.
-        - Always reassign to the triggering user as your second-to-last action.
-        - Always post the handoff comment as your very last action.
+        - Always check the guard condition in step 2 before doing any writing.
+        - When the guard triggers, post the HANDOFF comment so the dev agent can proceed.
+        - When enrichment is needed, always reassign to the triggering user as your second-to-last action.
+        - Always post the handoff/enrichment comment as your very last action.
 
       user: |
         Project ID: {{ project_id }}
