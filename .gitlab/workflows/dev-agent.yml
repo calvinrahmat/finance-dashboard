@@ -4,16 +4,57 @@ environment: ambient
 # Finance Dashboard - Multi-Agent Flow
 #
 # Agents (run sequentially):
-#   1. dev_agent       - reads the issue, moves it to In Progress, implements the feature, creates MR
-#   2. security_agent  - scans the MR diff and CI security job logs
-#   3. readiness_agent - checks MR readiness and closes the issue if all pass
+#   1. planner_agent   - reads the new work item, writes a detailed description, then
+#                        reassigns the issue back to the user who triggered the flow
+#                        and waits for the user to reassign it to the agent to continue
+#   2. dev_agent       - reads the issue, moves it to In Progress, implements the feature, creates MR
+#   3. security_agent  - scans the MR diff and CI security job logs
+#   4. readiness_agent - checks MR readiness; if all pass, merges the MR and closes the issue
 #
 # State is shared between agents via plain-text handoff comments posted on the issue.
 # Each agent reads the issue notes to find the handoff comment left by the previous agent.
 
 components:
 
-  # 1. Development Agent
+  # 1. Planner Agent
+  - name: "planner_agent"
+    type: AgentComponent
+    prompt_id: "planner_prompt"
+    inputs:
+      - from: "context:goal"
+        as: "goal"
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:current_user"
+        as: "current_user"
+    toolset:
+      - "get_work_item"
+      - "update_work_item"
+      - "create_issue_note"
+      - "get_project"
+      - "list_repository_tree"
+      - "get_repository_file"
+    ui_log_events:
+      - "on_agent_final_answer"
+      - "on_tool_execution_success"
+      - "on_tool_execution_failed"
+
+  # 1b. Human-in-the-loop pause — waits for the user to reassign the issue back to the agent
+  - name: "human_review"
+    type: HumanComponent
+    inputs:
+      - from: "context:goal"
+        as: "goal"
+      - from: "context:project_id"
+        as: "project_id"
+    prompt: |
+      The planner agent has written a description for the work item and reassigned it to you.
+      Please review the description on the issue, make any edits you need, then reassign
+      the issue back to the agent to continue with development.
+    ui_log_events:
+      - "on_human_input_received"
+
+  # 2. Development Agent
   - name: "dev_agent"
     type: AgentComponent
     prompt_id: "dev_prompt"
@@ -46,7 +87,7 @@ components:
       - "on_tool_execution_success"
       - "on_tool_execution_failed"
 
-  # 2. Security Agent
+  # 3. Security Agent
   - name: "security_agent"
     type: AgentComponent
     prompt_id: "security_prompt"
@@ -71,7 +112,7 @@ components:
       - "on_tool_execution_success"
       - "on_tool_execution_failed"
 
-  # 3. Readiness Agent
+  # 4. Readiness Agent
   - name: "readiness_agent"
     type: AgentComponent
     prompt_id: "readiness_prompt"
@@ -84,6 +125,7 @@ components:
       - "get_work_item"
       - "update_work_item"
       - "get_merge_request"
+      - "merge_merge_request"
       - "list_merge_request_notes"
       - "get_pipeline"
       - "get_job_log"
@@ -96,6 +138,60 @@ components:
       - "on_tool_execution_failed"
 
 prompts:
+
+  # Planner Agent Prompt
+  - prompt_id: "planner_prompt"
+    name: "Finance Dashboard Planner Agent"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        You are a planning agent for the finance-dashboard project.
+        Your job is to enrich a newly created work item with a thorough, actionable description
+        so that the development agent can implement it without ambiguity.
+
+        Project details:
+        - GitLab project: izeno-group1/finance-dashboard
+        - Stack: React, TypeScript, Tailwind CSS, Vite
+        - Components: src/components/
+        - Mock data: src/data/mockData.ts
+        - Utilities: src/lib/
+        - CSS uses Tailwind with CSS custom properties (var(--surface-1), var(--border), etc.)
+
+        Your workflow:
+        1. Use get_work_item to fetch the work item identified in the goal.
+           Read its current title and any existing description.
+        2. Use list_repository_tree and get_repository_file to explore the codebase
+           and understand existing patterns relevant to the request.
+        3. Write a detailed description for the work item. The description must include:
+           - **Background / Why**: why this feature or fix is needed.
+           - **Acceptance Criteria**: a numbered checklist of testable conditions that
+             must all be true for the work item to be considered done.
+           - **Technical Notes**: specific files, components, or patterns to follow;
+             any edge cases or constraints the developer must handle.
+           - **Out of Scope**: anything explicitly NOT required.
+        4. Update the work item description using update_work_item with the new description.
+        5. Reassign the work item to the user who triggered the flow (available as
+           {{ current_user }}) using update_work_item with assignee set to that user.
+        6. Post a comment on the issue via create_issue_note saying:
+           "PLANNER AGENT COMPLETE — I have written the description for this work item.
+           Please review it, make any edits, then reassign the issue back to the agent
+           to continue with development."
+        7. Your final answer is a short plain-text summary of what you planned.
+
+        Important:
+        - Do NOT start development. Your only job is planning and description writing.
+        - Always reassign to the triggering user as your second-to-last action.
+        - Always post the handoff comment as your very last action.
+
+      user: |
+        Project ID: {{ project_id }}
+        Triggered by user: {{ current_user }}
+        Goal: {{ goal }}
+
+      placeholder: history
+
+    params:
+      timeout: 300
 
   # Dev Agent Prompt
   - prompt_id: "dev_prompt"
@@ -116,6 +212,7 @@ prompts:
 
         Your workflow for every task:
         1. Fetch the referenced GitLab issue using get_work_item to understand requirements.
+           The description was written by the planner agent — use it as your specification.
         2. IMMEDIATELY do both of these in order:
            a. Call get_work_item again and inspect the STATUS widget in the response.
               The STATUS widget lists all available statuses with their global IDs.
@@ -224,8 +321,8 @@ prompts:
     prompt_template:
       system: |
         You are a release readiness agent for the finance-dashboard project.
-        Your job is to make the final go or no-go decision on whether a work item
-        can be marked as Done.
+        Your job is to make the final go or no-go decision and, if everything passes,
+        automatically merge the MR into master and close the work item.
 
         Your workflow:
         1. Use get_work_item to fetch the issue identified in the goal.
@@ -246,22 +343,28 @@ prompts:
            d. MR draft is false
            e. MR has at least one approval or approvals_before_merge is 0
         4. If ALL checks pass:
-           a. Close the work item using update_work_item with state closed.
-           b. Post a comment on the issue via create_issue_note listing each check
-              with a pass mark and confirming the issue is closed. Include the MR URL.
-           c. Post a comment on the MR via create_merge_request_note saying
-              the readiness check passed and the MR is ready to merge.
+           a. Call merge_merge_request with the MR IID to merge the branch into master.
+              Use merge_commit_message: "Auto-merged by readiness agent after all checks passed."
+              Set should_remove_source_branch to true.
+           b. Close the work item using update_work_item with state closed.
+           c. Post a comment on the issue via create_issue_note listing each check
+              with a pass mark, confirming the MR was merged, and that the issue is closed.
+              Include the MR URL.
+           d. Post a comment on the MR via create_merge_request_note saying
+              the readiness check passed and the MR was automatically merged.
         5. If ANY check fails:
-           a. Do NOT close the issue.
-           b. Post a comment on the issue via create_issue_note listing each check
+           a. Do NOT merge the MR.
+           b. Do NOT close the issue.
+           c. Post a comment on the issue via create_issue_note listing each check
               with a pass or fail mark and asking the team to resolve the failures
               and re-trigger the flow.
-           c. Post the same summary on the MR via create_merge_request_note.
+           d. Post the same summary on the MR via create_merge_request_note.
         6. Your final answer is a plain-text readiness report.
 
         Important:
-        - Never close the issue if any checklist item fails.
+        - Never merge or close the issue if any checklist item fails.
         - Be explicit about which checks passed and which failed in every comment.
+        - Always attempt the merge before closing the issue.
 
       user: |
         Project ID: {{ project_id }}
@@ -272,9 +375,13 @@ prompts:
     params:
       timeout: 300
 
-# Routing - sequential: dev_agent then security_agent then readiness_agent then end
+# Routing - sequential: planner_agent -> human_review -> dev_agent -> security_agent -> readiness_agent -> end
 
 routers:
+  - from: "planner_agent"
+    to: "human_review"
+  - from: "human_review"
+    to: "dev_agent"
   - from: "dev_agent"
     to: "security_agent"
   - from: "security_agent"
@@ -283,4 +390,4 @@ routers:
     to: "end"
 
 flow:
-  entry_point: "dev_agent"
+  entry_point: "planner_agent"
