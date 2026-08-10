@@ -42,6 +42,7 @@ function getCurrencySymbol(code: string): string {
     case "MYR": return "RM";
     case "EUR": return "€";
     case "AUD": return "A$";
+    case "CHF": return "Fr";
     default:    return "";
   }
 }
