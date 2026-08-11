@@ -44,6 +44,7 @@ function getCurrencySymbol(code: string): string {
     case "EUR": return "€";
     case "AUD": return "A$";
     case "CHF": return "Fr";
+    case "RUB": return "₽";
     default:    return "";
   }
 }
