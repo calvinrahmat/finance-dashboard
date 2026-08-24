@@ -18,7 +18,6 @@ const BASE_RATES: Rate[] = [
   { currency: "UAE Dirham",        code: "AED", flag: "🇦🇪", rate: 0.000228,  deltaPct:  0.17 },
   { currency: "Malaysian Ringgit", code: "MYR", flag: "🇲🇾", rate: 0.000292,  deltaPct:  0.12 },
   { currency: "Australian Dollar", code: "AUD", flag: "🇦🇺", rate: 0.000097,  deltaPct:  0.00 },
-  { currency: "Swiss Franc",       code: "CHF", flag: "🇨🇭", rate: 0.000057,  deltaPct:  0.09 },
 ];
 
 function jitter(rate: number): number {
@@ -42,7 +41,6 @@ function getCurrencySymbol(code: string): string {
     case "MYR": return "RM";
     case "EUR": return "€";
     case "AUD": return "A$";
-    case "CHF": return "Fr";
     default:    return "";
   }
 }
