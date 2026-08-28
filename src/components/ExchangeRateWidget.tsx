@@ -11,6 +11,7 @@ type Rate = {
 
 const BASE_RATES: Rate[] = [
   { currency: "Australian Dollar", code: "AUD", flag: "\uD83C\uDDE6\uD83C\uDDFA", rate: 1.54, deltaPct: 0.00 },
+  { currency: "Singapore Dollar",  code: "SGD", flag: "\uD83C\uDDF8\uD83C\uDDEC", rate: 1.35, deltaPct: 0.00 },
 ];
 
 function jitter(rate: number): number {
@@ -28,16 +29,23 @@ function getCurrencySymbol(code: string): string {
   switch (code) {
     case "USD": return "$";
     case "AUD": return "A$";
+    case "SGD": return "S$";
     default:    return "";
   }
 }
+
+// Direction toggle design decision:
+// Option A (shared direction) is used: a single "USD_TO_BASE" | "BASE_TO_USD"
+// toggle applies to all currency rows simultaneously. Each row already knows
+// its own rate, so the conversion math works generically without per-pair state.
+type Direction = "USD_TO_BASE" | "BASE_TO_USD";
 
 export function ExchangeRateWidget() {
   const [rates, setRates] = useState<Rate[]>(BASE_RATES);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [amount, setAmount] = useState<string>("1000");
-  const [direction, setDirection] = useState<"USD_TO_AUD" | "AUD_TO_USD">("USD_TO_AUD");
+  const [direction, setDirection] = useState<Direction>("USD_TO_BASE");
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -54,18 +62,12 @@ export function ExchangeRateWidget() {
     }, 600);
   }, []);
 
-  const handleDirectionChange = (dir: "USD_TO_AUD" | "AUD_TO_USD") => {
+  const handleDirectionChange = (dir: Direction) => {
     setDirection(dir);
     setAmount("1000");
   };
 
   const inputAmount = parseFloat(amount.replace(/,/g, "")) || 0;
-
-  // AUD rate (USD-based): 1 USD = rate AUD
-  const audRate = rates.find((r) => r.code === "AUD")?.rate ?? 1.54;
-
-  // visibleRates is always the single AUD entry
-  const visibleRates = rates;
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
@@ -74,7 +76,7 @@ export function ExchangeRateWidget() {
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">
             Exchange Rates
           </h2>
-          <p className="text-xs text-[var(--text-muted)]">USD to AUD</p>
+          <p className="text-xs text-[var(--text-muted)]">Live Exchange Rates</p>
         </div>
         <button
           onClick={handleRefresh}
@@ -86,31 +88,38 @@ export function ExchangeRateWidget() {
         </button>
       </div>
 
-      {/* Direction toggle */}
+      {/* Direction toggle — shared across all rows (Option A) */}
       <div className="mt-3 flex gap-2">
-        {(["USD_TO_AUD", "AUD_TO_USD"] as const).map((dir) => (
-          <button
-            key={dir}
-            onClick={() => handleDirectionChange(dir)}
-            className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-              direction === dir
-                ? "bg-[var(--series-1)] text-white"
-                : "border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"
-            }`}
-          >
-            {dir === "USD_TO_AUD" ? "USD \u2192 AUD" : "AUD \u2192 USD"}
-          </button>
-        ))}
+        <button
+          onClick={() => handleDirectionChange("USD_TO_BASE")}
+          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+            direction === "USD_TO_BASE"
+              ? "bg-[var(--series-1)] text-white"
+              : "border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"
+          }`}
+        >
+          USD &rarr; Foreign
+        </button>
+        <button
+          onClick={() => handleDirectionChange("BASE_TO_USD")}
+          className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+            direction === "BASE_TO_USD"
+              ? "bg-[var(--series-1)] text-white"
+              : "border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"
+          }`}
+        >
+          Foreign &rarr; USD
+        </button>
       </div>
 
       {/* Amount input */}
       <div className="mt-4">
         <label className="text-xs font-medium text-[var(--text-secondary)]">
-          {direction === "AUD_TO_USD" ? "Amount (AUD)" : "Amount (USD)"}
+          {direction === "BASE_TO_USD" ? "Amount (Foreign)" : "Amount (USD)"}
         </label>
         <div className="mt-1 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--page)] px-3 py-2">
           <span className="text-sm font-semibold text-[var(--text-muted)]">
-            {direction === "AUD_TO_USD" ? "A$" : "$"}
+            {direction === "BASE_TO_USD" ? "" : "$"}
           </span>
           <input
             type="number"
@@ -123,16 +132,16 @@ export function ExchangeRateWidget() {
         </div>
       </div>
 
-      {/* Rate rows */}
+      {/* Rate rows — one per currency in BASE_RATES */}
       <div className="mt-4 flex flex-col gap-3">
-        {visibleRates.map((r) => {
+        {rates.map((r) => {
           const isUp = r.deltaPct >= 0;
           const DeltaIcon = isUp ? TrendingUp : TrendingDown;
           const deltaColor = isUp ? "var(--success-text)" : "var(--status-critical)";
 
-          if (direction === "AUD_TO_USD") {
-            // AUD → USD: converted = audAmount / rate
-            const inverseRate = audRate > 0 ? 1 / audRate : 0;
+          if (direction === "BASE_TO_USD") {
+            // Foreign → USD: converted = inputAmount / r.rate (guard against division by zero)
+            const inverseRate = r.rate > 0 ? 1 / r.rate : 0;
             const converted = inputAmount * inverseRate;
             return (
               <div
@@ -162,7 +171,7 @@ export function ExchangeRateWidget() {
                   >
                     <DeltaIcon size={11} />
                     <span>
-                      1 AUD = {formatRate(inverseRate)} USD
+                      1 {r.code} = {formatRate(inverseRate)} USD
                     </span>
                     <span className="font-normal text-[var(--text-muted)]">
                       ({isUp ? "+" : ""}{r.deltaPct.toFixed(2)}%)
@@ -173,7 +182,7 @@ export function ExchangeRateWidget() {
             );
           }
 
-          // USD → AUD mode (default): converted = usdAmount * rate
+          // USD → Foreign mode (default): converted = inputAmount * r.rate
           const converted = inputAmount * r.rate;
           return (
             <div
