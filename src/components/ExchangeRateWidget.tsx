@@ -12,6 +12,7 @@ type Rate = {
 const BASE_RATES: Rate[] = [
   { currency: "Australian Dollar", code: "AUD", flag: "\uD83C\uDDE6\uD83C\uDDFA", rate: 1.54, deltaPct: 0.00 },
   { currency: "Singapore Dollar",  code: "SGD", flag: "\uD83C\uDDF8\uD83C\uDDEC", rate: 1.34, deltaPct: 0.00 },
+  { currency: "British Pound",     code: "GBP", flag: "\uD83C\uDDEC\uD83C\uDDE7", rate: 0.79, deltaPct: 0.00 },
 ];
 
 function jitter(rate: number): number {
@@ -30,6 +31,7 @@ function getCurrencySymbol(code: string): string {
     case "USD": return "$";
     case "AUD": return "A$";
     case "SGD": return "S$";
+    case "GBP": return "£";
     default:    return "";
   }
 }
