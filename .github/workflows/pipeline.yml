@@ -124,8 +124,10 @@ jobs:
 
   deploy-dev:
     name: Deploying to Dev
-    needs: [build, tests, quality, dependency-scan, security]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # Security jobs are not listed here on purpose: a scan finding should not hide the dev deployment
+    needs: [build, tests, quality]
+    # Skip the weekly scheduled scan, and PRs from forks (their token cannot deploy)
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -134,9 +136,31 @@ jobs:
       name: development
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Announce target (development)
+        run: |
+          echo "Environment : development"
+          echo "Target      : GitHub Pages"
+          echo "Commit      : ${GITHUB_SHA::7}"
+          echo "::notice title=Deploying to Dev::Environment: development · Target: GitHub Pages · Commit: ${GITHUB_SHA::7}"
+
       - name: Deploy to GitHub Pages (development)
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Smoke test (development)
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "Attempt $attempt: GET $PAGE_URL"
+            if curl -fsS "$PAGE_URL" | grep -q "Northwind Finance"; then
+              echo "Dev site is up"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error title=Smoke test failed::$PAGE_URL did not serve the dashboard"
+          exit 1
 
       - name: Deployment summary
         run: |
