@@ -1,3 +1,4 @@
+test
 # React + TypeScript + Vite
 
 Update template
